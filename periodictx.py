@@ -1,5 +1,3 @@
-# encoding: utf-8
-
 # periodic triaxial test simulation
 #
 # The initial packing is either
@@ -21,11 +19,17 @@
 # condition (maxUnbalanced) so that the packing is considered stabilized
 # and the stage is done.
 #
-
 from __future__ import print_function
-sigmaIso = -1e5
-initialFric = 0.0
-finalFric = 0.5
+
+
+## Inputs
+sigmaIso = -1e5         # Target stress [Pa]
+initialFric = 0.0       # Initial friction at specimen genesis
+finalFric = 0.5         # Final friction before shearing
+strain_inc = 0.01       # Strain increment to take before every force rebalance
+targetStrain = 0.4      # Target strain (+val comp), must be a multiple of the strain incr
+
+
 
 #import matplotlib
 #matplotlib.use('Agg')
@@ -51,11 +55,15 @@ sp.toSimulation()
 # assign initial friction
 O.materials[0].frictionAngle = 0.0
 
+# define strain target levels and initialize target index
+strain_levels = numpy.arange(strain_inc, targetStrain, strain_inc)
+
 O.engines = [
         ForceResetter(),
         InsertionSortCollider([Bo1_Sphere_Aabb()]),
         InteractionLoop([Ig2_Sphere_Sphere_ScGeom()], [Ip2_FrictMat_FrictMat_FrictPhys()], [Law2_ScGeom_FrictPhys_CundallStrack()]),
         PeriTriaxController(
+                # create label/var name for triax engine
                 label='triax',
                 # specify target values and whether they are strains or stresses
                 goal=(sigmaIso, sigmaIso, sigmaIso),
@@ -106,27 +114,41 @@ plot.plots = {
 plot.plot()
 
 
+
 def compactionFinished():
-    ## set friction angle back to non-zero value
+    ## set friction angle back to non-zero value and prepare for shear
 	# tangensOfFrictionAngle is computed by the Ip2_* functor from material
 	# for future contacts change material (there is only one material for all particles)
 	O.materials[0].frictionAngle = finalFric  # radians
 	# for existing contacts, set contact friction directly
 	for i in O.interactions:
 	    i.phys.tangensOfFrictionAngle = tan(finalFric)
+
     # set the current cell configuration to be the reference one
 	O.cell.trsf = Matrix3.Identity
-	# change control type: keep constant confinement in x,y, 20% compression in z
-	triax.goal = (sigmaIso, sigmaIso, -.4)
+    # next time, start shearing specimen
+	triax.doneHook = 'startShear()'
+	triax.strain_idx = 0
+
+def startShear():
+	# change control type: keep constant confinement in x,y, compression in z
+	triax.goal = (sigmaIso, sigmaIso, -strain_levels[triax.strain_idx])
 	triax.stressMask = 3
 	# allow faster deformation along x,y to better maintain stresses
 	triax.maxStrainRate = (1., 1., .01)
-	# next time, call triaxFinished instead of compactionFinished
-	triax.doneHook = 'triaxFinished()'
-	# do not wait for stabilization before calling triaxFinished
-	triax.maxUnbalanced = 0.1 #10
-
+	if (triax.strain[2] <= -strain_levels[triax.strain_idx]):
+	    # next time, call triaxFinished instead of compactionFinished
+	    triax.doneHook = 'triaxFinished()'
+	else:
+	    # otherwise update strain target level and recurse shear
+	    triax.strain_idx += 1
+	    triax.doneHook = 'startShear()'
+	    
+	# wait for stabilization before calling calling next doneHook
+	triax.maxUnbalanced = 0.01
+    
 
 def triaxFinished():
 	print('Finished')
 	O.pause()
+
