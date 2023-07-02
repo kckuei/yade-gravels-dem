@@ -26,7 +26,7 @@ from __future__ import print_function
 sigmaIso = -1e5         # Target stress [Pa]
 initialFric = 0.0       # Initial friction at specimen genesis
 finalFric = 0.5         # Final friction before shearing
-strain_inc = 0.01       # Strain increment to take before every force rebalance
+strain_inc = 0.01 #0.0001     # Strain increment to take before every force rebalance
 targetStrain = 0.4      # Target strain (+val comp), must be a multiple of the strain incr
 
 
@@ -56,12 +56,16 @@ sp.toSimulation()
 O.materials[0].frictionAngle = 0.0
 
 # define strain target levels and initialize target index
-strain_levels = numpy.arange(strain_inc, targetStrain, strain_inc)
+#strain_levels = numpy.arange(strain_inc, targetStrain + 10*strain_inc, strain_inc)
 
 O.engines = [
         ForceResetter(),
-        InsertionSortCollider([Bo1_Sphere_Aabb()]),
-        InteractionLoop([Ig2_Sphere_Sphere_ScGeom()], [Ip2_FrictMat_FrictMat_FrictPhys()], [Law2_ScGeom_FrictPhys_CundallStrack()]),
+        InsertionSortCollider([Bo1_Sphere_Aabb()],
+                              label='collider'),
+        InteractionLoop([Ig2_Sphere_Sphere_ScGeom()], 
+                        [Ip2_FrictMat_FrictMat_FrictPhys()], 
+                        [Law2_ScGeom_FrictPhys_CundallStrack()],
+                        label='interactionLoop'),
         PeriTriaxController(
                 # create label/var name for triax engine
                 label='triax',
@@ -77,7 +81,12 @@ O.engines = [
                 # call this function when goal is reached and the packing is stable
                 doneHook='compactionFinished()'
         ),
-        NewtonIntegrator(damping=.2),
+        NewtonIntegrator(
+                # non-viscous newton damping
+                damping=.2,
+                # create label 
+                label='newton'
+        ),
         PyRunner(command='addPlotData()', iterPeriod=100),
 ]
 O.dt = .5 * PWaveTimeStep()
@@ -93,6 +102,10 @@ def addPlotData():
 	        exx=triax.strain[0],
 	        eyy=triax.strain[1],
 	        ezz=triax.strain[2],
+            poros=yade._utils.porosity(),
+            porosvox=yade._utils.voxelPorosity(200,*yade._utils.aabbExtrema()),
+            # mechanical coordination number Zm
+            Zm=utils.avgNumInteractions(skipFree=True),
 	        # save all available energy data
 	        Etot=O.energy.total(),
 	        **O.energy
@@ -109,6 +122,8 @@ plot.plots = {
         ' i': ('exx', 'eyy', 'ezz'),
         # energy plot
         ' i ': (O.energy.keys, None, 'Etot'),
+        '  i': ('Zm', None, 'poros', 'porosvox'),
+        'ezz': ('sxx','syy','szz')
 }
 # show the plot
 plot.plot()
@@ -128,24 +143,33 @@ def compactionFinished():
 	O.cell.trsf = Matrix3.Identity
     # next time, start shearing specimen
 	triax.doneHook = 'startShear()'
-	triax.strain_idx = 0
+	# init strain targets, and save strain inc and final target
+	triax.strain_inc = strain_inc
+	triax.strain_target_stage = strain_inc
+	triax.strain_target_final = targetStrain
+	# set grow damping
+	triax.growDamping = 0.02
+	
 
 def startShear():
 	# change control type: keep constant confinement in x,y, compression in z
-	triax.goal = (sigmaIso, sigmaIso, -strain_levels[triax.strain_idx])
+	triax.goal = (sigmaIso, sigmaIso, -triax.strain_target_stage)
+	# print stage info
+	print("Target strain stage: ", triax.goal)
 	triax.stressMask = 3
 	# allow faster deformation along x,y to better maintain stresses
 	triax.maxStrainRate = (1., 1., .01)
-	if (triax.strain[2] <= -strain_levels[triax.strain_idx]):
-	    # next time, call triaxFinished instead of compactionFinished
+	# set the done hook based on stage of test
+	if (triax.strain[2] <= -triax.strain_target_final):
+	    # reached target strain, next time, call triaxFinished instead of startShear
 	    triax.doneHook = 'triaxFinished()'
 	else:
-	    # otherwise update strain target level and recurse shear
-	    triax.strain_idx += 1
+	    # otherwise update strain target level and recursively call startShear
+	    triax.strain_target_stage += triax.strain_inc
 	    triax.doneHook = 'startShear()'
-	    
+	 
 	# wait for stabilization before calling calling next doneHook
-	triax.maxUnbalanced = 0.01
+	triax.maxUnbalanced= 10 #0.001
     
 
 def triaxFinished():
