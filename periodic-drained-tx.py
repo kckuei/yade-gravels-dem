@@ -53,7 +53,7 @@ else:
 sp.toSimulation()
 
 # assign initial friction
-O.materials[0].frictionAngle = 0.0
+O.materials[0].frictionAngle = initialFric
 
 # define strain target levels and initialize target index
 #strain_levels = numpy.arange(strain_inc, targetStrain + 10*strain_inc, strain_inc)
@@ -66,6 +66,20 @@ O.engines = [
                         [Ip2_FrictMat_FrictMat_FrictPhys()], 
                         [Law2_ScGeom_FrictPhys_CundallStrack()],
                         label='interactionLoop'),
+        GlobalStiffnessTimeStepper(
+                # use adaptive stiffness-based timestepper
+                timestepSafetyCoefficient=0.8,
+                timeStepUpdateInterval=100,
+                # set to True for domain decomp
+                parallelMode=False,
+                label='timeStepper'
+        ),
+        NewtonIntegrator(
+                # non-viscous newton damping
+                damping=.2,
+                # create label 
+                label='newton'
+        ),
         PeriTriaxController(
                 # create label/var name for triax engine
                 label='triax',
@@ -81,15 +95,9 @@ O.engines = [
                 # call this function when goal is reached and the packing is stable
                 doneHook='compactionFinished()'
         ),
-        NewtonIntegrator(
-                # non-viscous newton damping
-                damping=.2,
-                # create label 
-                label='newton'
-        ),
         PyRunner(command='addPlotData()', iterPeriod=100),
 ]
-O.dt = .5 * PWaveTimeStep()
+#O.dt = .5 * PWaveTimeStep()
 
 
 def addPlotData():
@@ -171,6 +179,7 @@ def startShear():
 	# wait for stabilization before calling calling next doneHook
 	triax.maxUnbalanced= 10 #0.001
     
+
 
 def triaxFinished():
 	print('Finished')
