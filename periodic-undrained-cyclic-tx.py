@@ -68,7 +68,7 @@ sp.toSimulation(material="granr")
 
 # Overwrite with initial friction for compaction
 O.materials[0].frictionAngle = radians(initialFric)
-O.materials[0].etaRoll = radians(initialFric)  ###
+O.materials[0].etaRoll = radians(initialFric)
 
 ## Define engines
 O.engines = [
@@ -205,7 +205,10 @@ def compactionFinished():
 	triax.strain_target_final = targetStrain
 	# set grow damping
 	triax.growDamping = triaxGrowDamping  
-	
+	# save compaction data and reset 
+	triax.growDamping = triaxGrowDamping  
+	plot.saveDataTxt(O.tags['d.id'] + '_compaction.txt')
+
 
 def startShear():
 	## change control type for  constant volume, undrained loading
@@ -246,5 +249,7 @@ def startShear():
 
 def triaxFinished():
 	print('Finished')
+	# save the plot data
+	plot.saveDataTxt(O.tags['d.id'] + '_shear.txt')
 	O.pause()
 
