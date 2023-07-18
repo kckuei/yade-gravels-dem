@@ -1,0 +1,5 @@
+# comments start with # as in python
+damping     # first non-comment line is variable name
+.2
+.4
+.6
