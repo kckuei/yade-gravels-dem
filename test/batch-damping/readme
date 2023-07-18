@@ -1,2 +1,3 @@
 # See https://yade-dem.org/doc/tutorial-geo.html
-# To run: yade-batch params.txt simulation.py
+# To run: 
+yade-batch params.txt simulation.py

@@ -4,7 +4,9 @@
 
 # import yade modules that we will use below
 readParamsFromTable(damping=.2)
-from yade import pack, plot, table
+from yade.params import table
+
+from yade import pack, plot
 
 # create rectangular box from facets
 O.bodies.append(geom.facetBox((.5, .5, .5), (.5, .5, .5), wallMask=31))
@@ -28,7 +30,7 @@ O.engines = [
         ),
         NewtonIntegrator(gravity=(0, 0, -9.81), damping=table.damping),
         # call the checkUnbalanced function (defined below) every 2 seconds
-        PyRunner(command='checkUnbalanced()', realPeriod=2),
+#        PyRunner(command='checkUnbalanced()', realPeriod=2),
         # call the addPlotData function every 200 steps
         PyRunner(command='addPlotData()', iterPeriod=100)
 ]
@@ -43,20 +45,20 @@ O.dt = .5 * PWaveTimeStep()
 O.trackEnergy = True
 
 def checkUnbalancedForce():
-   if unbalancedForce<0.05:  # exit Yade if unbalanced force drops below 0.05
+   if unbalancedForce() < 0.05:  # exit Yade if unbalanced force drops below 0.05
       plot.saveDataTxt(O.tags['d.id']+'.data.bz2') # save all data into a unique file before exiting
       import sys
       sys.exit(0)   # exit the program
 
-# if the unbalanced forces goes below .05, the packing
-# is considered stabilized, therefore we stop collected
-# data history and stop
-def checkUnbalanced():
-	if unbalancedForce() < .05:
-		O.pause()
-		plot.saveDataTxt('bbb.txt.bz2')
-		# plot.saveGnuplot('bbb') is also possible
-
+## if the unbalanced forces goes below .05, the packing
+## is considered stabilized, therefore we stop collected
+## data history and stop
+#def checkUnbalanced():
+#	if unbalancedForce() < .05:
+#		O.pause()
+#		plot.saveDataTxt('bbb.txt.bz2')
+#		# plot.saveGnuplot('bbb') is also possible
+#
 
 # collect history of data which will be plotted
 def addPlotData():
@@ -69,12 +71,12 @@ def addPlotData():
 # on the left y-axis, all energies on the right y-axis
 # (O.energy.keys is function which will be called to get all defined energies)
 # None separates left and right y-axis
-plot.plots = {'i': ('unbalanced', None, O.energy.keys)}
+##plot.plots = {'i': ('unbalanced', None, O.energy.keys)}
 
 # show the plot on the screen, and update while the simulation runs
-plot.plot()
+##plot.plot()
 
-O.saveTmp()
+##O.saveTmp()
 
 O.run()         # run forever, until stopped by checkUnbalancedForce()
 waitIfBatch()   # do not finish the script until the simulation ends; does nothing in non-batch mode
