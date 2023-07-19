@@ -121,7 +121,6 @@ plot.plot()
 
 def compactionFinished():
     print('Compaction Finished')
-    export.text(output_path + "/sphere_coordinates")
     doneHook='dupCell()'
     print('sp.dim(): ', sp.dim())
     print('sp.aabb(): ', sp.aabb())
@@ -133,23 +132,51 @@ def compactionFinished():
 
 def dupCell():
     print('Duplicating Cell')
-    # save iso packing
+
+    # Duplicate in x-dim
+    # save iso packing and reload to dataframe
+    export.text(output_path + "/sphere_coordinates")
     df = pd.read_csv("output/sphere_coordinates",sep='\t',names=['x','y','z','r'],skiprows=1)
     # get base cell size
     dx, dy, dz = O.cell.hSize[0][0], O.cell.hSize[1][1], O.cell.hSize[2][2]
     # update dimensions of box by 1 rve unit
     O.cell.setBox((dx*2,dy,dz)) 
-    # duplicate a box along x dimension
+    # duplicate along x dimension
     for _, (x, y, z, r) in df.iterrows():
         O.bodies.append(utils.sphere([x+dx,y,z], r))
+
+    # Duplicate in y-dim
+    # save iso packing and reload to dataframe
+    export.text(output_path + "/sphere_coordinates")
+    df = pd.read_csv("output/sphere_coordinates",sep='\t',names=['x','y','z','r'],skiprows=1)
+    # get base cell size
+    dx, dy, dz = O.cell.hSize[0][0], O.cell.hSize[1][1], O.cell.hSize[2][2]
+    # update dimensions of box by 1 rve unit
+    O.cell.setBox((dx,dy*2,dz)) 
+    # duplicate along y dimension
+    for _, (x, y, z, r) in df.iterrows():
+        O.bodies.append(utils.sphere([x,y+dy,z], r))
+
+    # Duplicate in z-dim
+    # save iso packing and reload to dataframe
+    export.text(output_path + "/sphere_coordinates")
+    df = pd.read_csv("output/sphere_coordinates",sep='\t',names=['x','y','z','r'],skiprows=1)
+    # get base cell size
+    dx, dy, dz = O.cell.hSize[0][0], O.cell.hSize[1][1], O.cell.hSize[2][2]
+    # update dimensions of box by 1 rve unit
+    O.cell.setBox((dx,dy,dz*2)) 
+    # duplicate along z dim
+    for _, (x, y, z, r) in df.iterrows():
+        O.bodies.append(utils.sphere([x,y,z+dz], r))
+
     triax.doneHook = 'compactionStage2()'
     #O.pause()
 
 def compactionStage2():
-    print('Recompacting after duplication')
-    triax.maxUnbalanced=.5e-5
-    triax.relStressTol=.5e-5
-    triax.goal=(sigmaIso*1.05, sigmaIso*1.05, sigmaIso*1.05)
+    print('Recompacting second time after duplication')
+    triax.maxUnbalanced=1e-6
+    triax.relStressTol=1e-6
+    triax.goal=(sigmaIso*1.1, sigmaIso*1.1, sigmaIso*1.1)
     triax.doneHook = 'finished()'
 
 def finished():
