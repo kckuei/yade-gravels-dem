@@ -52,8 +52,8 @@ print("O.cell.hSize: ",O.cell.hSize)
 sp.toSimulation(material="granr")
 
 O.engines = [
-        ForceResetter(),
-        InsertionSortCollider([Bo1_Sphere_Aabb()]),
+        ForceResetter(label='resetter'),
+        InsertionSortCollider([Bo1_Sphere_Aabb()],label='collider'),
         InteractionLoop([Ig2_Sphere_Sphere_ScGeom()],
                         [Ip2_FrictMat_FrictMat_FrictPhys(),
                          Ip2_CohFrictMat_CohFrictMat_CohFrictPhys()],
@@ -174,8 +174,8 @@ def dupCell():
 
 def compactionStage2():
     print('Recompacting second time after duplication')
-    triax.maxUnbalanced=1e-6
-    triax.relStressTol=1e-6
+    triax.maxUnbalanced=1e-5
+    triax.relStressTol=1e-5
     triax.goal=(sigmaIso*1.1, sigmaIso*1.1, sigmaIso*1.1)
     triax.doneHook = 'finished()'
 
@@ -187,5 +187,6 @@ def finished():
     vtkExporter.exportInteractions(what=dict(kn='i.phys.kn'))
     vtkExporter.exportContactPoints(what={'nn': 'i.geom.normal'})
     vtkExporter.exportPeriodicCell()
+    triax.doneHook = 'changeBC()'
     O.pause()
 
