@@ -78,7 +78,7 @@ O.engines = [
                 parallelMode=False,
                 label='timeStepper'
         ),
-        NewtonIntegrator(damping=.2),
+        NewtonIntegrator(damping=.2, label='newton'),
         PeriTriaxController(
                 label='triax',
                 # specify target values and whether they are strains or stresses
@@ -256,11 +256,11 @@ def switchController():
     ## reassign friction values
     # for future contacts change material
     O.materials[0].frictionAngle = radians(sp_fric_final)
-    O.materials[0].etaRoll = sp_fric_rr_final
+    #O.materials[0].etaRoll = sp_fric_rr_final
     # for existing contacts, set contact friction directly
     for i in O.interactions:
     	i.phys.tangensOfFrictionAngle = radians(sp_fric_final)
-    	i.phys.maxRollPl = sp_fric_rr_final
+    	#i.phys.maxRollPl = sp_fric_rr_final
     	
     	
     	
@@ -281,6 +281,10 @@ def switchController():
     	
     # What if I setup a pyrunner, to zero the velocities and glue them in place until
     # the wall reach the target?
+    # maybe artificially slow the velocities
+    # or just let the outside ones move?
+    newton.damping = 0.8		# Increasing damping
+    O.engines +=[PyRunner(command='reduceSphereVel()', iterPeriod=10)]
     
 
     
@@ -288,5 +292,7 @@ def switchController():
     O.pause()
 
 
-
-
+def reduceSphereVel():
+    for b in O.bodies:
+    	b.state.vel = Vector3(0.,0.,0.)
+    	b.state.angVel = Vector3(0.,0.,0.)

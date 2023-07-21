@@ -60,6 +60,7 @@ O.engines = [
         TriaxialStressController(label='triaxw',dead=True),
         NewtonIntegrator(damping=.2),
         PyRunner(command='addPlotData()', iterPeriod=100),
+        PyRunner(command='checkCondition()', iterPeriod=1000),
 ]
 
 def addPlotData():
@@ -122,10 +123,19 @@ def changeBC():
     triaxw.dead=False
 
 
-# Stop once reach goal stress (does not work?)
-O.run()
-while True:
-    if unbalancedForce() < 1e-5 and abs((sigmaIso-triaxw.meanStress)/sigmaIso < 1e-5):
-        break
-O.pause()
+# https://answers.launchpad.net/yade/+question/707350
+
+# Option 1: ensures that GUI load
+def checkCondition():
+    if unbalancedForce() < 1e-5 and abs((sigmaIso-triaxw.meanStress)/sigmaIso) < 1e-5:
+        O.pause()
+
+# Option 2: Don't see GUI until reach goal
+# Stop once reach goal stress
+#N=100
+#while True:
+#    O.run(N,True)
+#    if unbalancedForce() < 1e-5 and abs((sigmaIso-triaxw.meanStress)/sigmaIso) < 1e-5:
+#        break
+
 
