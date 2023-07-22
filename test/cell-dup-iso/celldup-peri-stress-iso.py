@@ -32,6 +32,9 @@ sp_fric_rr_final = 0.12		# rad
 wl_fric = 0.0			# deg
 wl_fric_rr = 0.0		# rad
 
+# create a dict to store vars for global access
+myvars = {}
+
 
 # define materials
 O.materials.append(CohFrictMat(density=sp_density, young=sp_young, poisson=sp_poisson,
@@ -79,6 +82,7 @@ O.engines = [
                 label='timeStepper'
         ),
         NewtonIntegrator(damping=.2, label='newton'),
+        TranslationEngine(label='translation', dead=True),
         PeriTriaxController(
                 label='triax',
                 # specify target values and whether they are strains or stresses
@@ -94,6 +98,10 @@ O.engines = [
                 doneHook='compactionFinished()'
         ),
         PyRunner(command='addPlotData()', iterPeriod=100),
+        PyRunner(command='checkTriaxW()', iterPeriod=1000, 
+        	label='pyrnr_checkWallTriax', dead=True),
+        PyRunner(command='calm()', iterPeriod=10,
+        	label='pyrnr_calm', dead=True),
 ]
 
 # init wall triax controller
@@ -113,6 +121,8 @@ def addPlotData():
     	ezz=triax.strain[2],
     	n0=yade._utils.porosity(),
     	n1=yade._utils.voxelPorosity(200,*yade._utils.aabbExtrema()),
+    	nw=yade.utils.voxelPorosityTriaxial(triaxw,200),
+    	orMax=yade._utils.maxOverlapRatio(),
     	Zm=utils.avgNumInteractions(skipFree=True),
     	Cn=utils.avgNumInteractions(skipFree=False),
     	Etot=O.energy.total(),
@@ -236,7 +246,7 @@ def switchController():
     
     # update wall triax settings, goals, and assign aabbWall Ids
     triaxw.internalCompaction=False
-    triaxw.max_vel=0.1			# needs to be sufficiently small to avoid osc
+    triaxw.max_vel=0.005		# needs to be sufficiently small to avoid osc
     triaxw.stressDamping=0.6		# Use high damping for now, change later
     triaxw.stressMask=7
     triaxw.goal1=triaxw.goal2=triaxw.goal3=pk_sigmaIso2
@@ -253,16 +263,15 @@ def switchController():
     # activate triaxw
     triaxw.dead=False
     
-    ## reassign friction values
+    ## reassign final friction values
     # for future contacts change material
     O.materials[0].frictionAngle = radians(sp_fric_final)
-    #O.materials[0].etaRoll = sp_fric_rr_final
+    O.materials[0].etaRoll = sp_fric_rr_final
     # for existing contacts, set contact friction directly
     for i in O.interactions:
     	i.phys.tangensOfFrictionAngle = radians(sp_fric_final)
-    	#i.phys.maxRollPl = sp_fric_rr_final
-    	
-    	
+    	i.phys.maxRollPl = sp_fric_rr_final
+    
     	
     ## Add the cone penetrometer
     # make the cylinder body
@@ -270,29 +279,63 @@ def switchController():
     center = Vector3(cellDim/2, cellDim*1.8, cellDim/2.)
     radius = cellDim/cellToProbeRatio
     height = cellDim*1.2
-    rod = geom.facetCylinder(center, radius, height, Quaternion((1, 0, 0), .5*pi))
+    rodIds = geom.facetCylinder(center, radius, height, Quaternion((1, 0, 0), .5*pi))
     # make the cone
     coneHeight = radius/(numpy.tan(numpy.radians(30)))
-    cone = geom.facetCone(Vector3(cellDim/2, center[1]-height/2.-coneHeight/2, cellDim/2.), 0, radius, coneHeight, Quaternion((1, 0, 0), .5*pi))
+    coneIds = geom.facetCone(Vector3(cellDim/2, center[1]-height/2.-coneHeight/2, cellDim/2.), 0, radius, coneHeight, Quaternion((1, 0, 0), .5*pi))
     # import the geoms
-    rodIds = O.bodies.append(rod)
-    coneIds = O.bodies.append(cone)
+    rodIds = O.bodies.append(rodIds)
+    coneIds = O.bodies.append(coneIds)
     
-    	
-    # What if I setup a pyrunner, to zero the velocities and glue them in place until
-    # the wall reach the target?
-    # maybe artificially slow the velocities
-    # or just let the outside ones move?
-    newton.damping = 0.8		# Increasing damping
-    O.engines +=[PyRunner(command='reduceSphereVel()', iterPeriod=10)]
+    myvars['rodIds'] = rodIds
+    myvars['coneIds'] = coneIds
     
-
     
+    # re-establish wall stresses with high damping and calming sphere velocities
+    # to preserve state
+    newton.damping = 0.8		# Increasing damping temp
+    pyrnr_calm.dead = False
+    pyrnr_checkWallTriax.dead = False
+    
+    
+def checkTriaxW():
+    fac = abs((pk_sigmaIso2-triaxw.meanStress)/pk_sigmaIso2)
+    if unbalancedForce() < 0.0018 and fac < 0.001:
+    	# deactivate pyrunners
+        pyrnr_calm.dead = True
+        pyrnr_checkWallTriax.dead = True
+        
+        # reset damping
+        newton.damping = 0.2
+        triaxw.stressDamping = 0.2
+        
+        # add material for rod
+        O.materials.append(CohFrictMat(young=1e8, poisson=0.28, frictionAngle=0, density=0, 
+        	isCohesive=False, momentRotationLaw=False, etaTwist=0, label='rod'))
+        	
+        # update engines for facets
+        collider.boundDispatcher.functors += [Bo1_Facet_Aabb()]
+        interactionLoop.geomDispatcher.functors += [Ig2_Facet_Sphere_ScGeom()]
 
-    O.pause()
+	    
+       	# activate translation engine for rod
+        translation.dead = False
+        translation.ids = myvars['coneIds'] + myvars['rodIds']
+        translation.translationAxis = [0,-1,0]
+        translation.velocity = 0.01
+        
+        O.pause()
+    else:
+        # Matybe adjust iterPeriod of calm as we approach target stress?
+        # or reduce the damping?
+        newton.damping = 0.6*fac + 0.2
+        triaxw.stressDamping = 0.6*fac + 0.2
 
-
-def reduceSphereVel():
+def calm():
+    # zero linear and angular velocoties
     for b in O.bodies:
     	b.state.vel = Vector3(0.,0.,0.)
     	b.state.angVel = Vector3(0.,0.,0.)
+
+
+
